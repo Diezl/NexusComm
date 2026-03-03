@@ -1,0 +1,155 @@
+{
+  "colorScheme": "dark",
+  "fonts": [
+    {
+      "family": "Open Sans",
+      "role": "body"
+    },
+    {
+      "family": "Verdana",
+      "role": "unknown"
+    },
+    {
+      "family": "Tahoma",
+      "role": "unknown"
+    }
+  ],
+  "colors": {
+    "primary": "#337AB7",
+    "accent": "#1A4D80",
+    "background": "#333333",
+    "textPrimary": "#1A4D80",
+    "link": "#1A4D80"
+  },
+  "typography": {
+    "fontFamilies": {
+      "primary": "Open Sans",
+      "heading": "Open Sans"
+    },
+    "fontStacks": {
+      "heading": [
+        "Open Sans",
+        "Verdana",
+        "Tahoma",
+        "serif"
+      ],
+      "body": [
+        "Open Sans",
+        "Verdana",
+        "Tahoma",
+        "serif"
+      ],
+      "paragraph": [
+        "Open Sans",
+        "Verdana",
+        "Tahoma",
+        "serif"
+      ]
+    },
+    "fontSizes": {
+      "h1": "36px",
+      "h2": "30px",
+      "body": "14px"
+    }
+  },
+  "spacing": {
+    "baseUnit": 4,
+    "borderRadius": "4px"
+  },
+  "components": {
+    "input": {
+      "background": "#FFFFFF",
+      "textColor": "#555555",
+      "borderColor": "#CCCCCC",
+      "borderRadius": "4px",
+      "borderRadiusCorners": {
+        "topLeft": "4px",
+        "topRight": "4px",
+        "bottomRight": "4px",
+        "bottomLeft": "4px"
+      },
+      "shadow": "rgba(0, 0, 0, 0.075) 0px 1px 1px 0px inset"
+    },
+    "buttonPrimary": {
+      "background": "#337AB7",
+      "textColor": "#FFFFFF",
+      "borderColor": "#2E6DA4",
+      "borderRadius": "4px",
+      "borderRadiusCorners": {
+        "topLeft": "4px",
+        "topRight": "4px",
+        "bottomRight": "4px",
+        "bottomLeft": "4px"
+      },
+      "shadow": "none"
+    },
+    "buttonSecondary": {
+      "background": "#1A4D80",
+      "textColor": "#333333",
+      "borderRadius": "0px",
+      "borderRadiusCorners": {
+        "topLeft": "0px",
+        "topRight": "0px",
+        "bottomRight": "0px",
+        "bottomLeft": "0px"
+      },
+      "shadow": "none"
+    }
+  },
+  "images": {
+    "logo": "https://pdslive.media/assets/img/whmcs.png",
+    "favicon": null,
+    "ogImage": null,
+    "logoHref": "/admin/login.php",
+    "logoAlt": "WHMCS"
+  },
+  "__llm_logo_reasoning": {
+    "selectedIndex": 0,
+    "reasoning": "Selected #0 because it is visible, has a medium size, and the alt text matches the brand name 'WHMCS'. It is the most prominent logo available.",
+    "confidence": 0.85,
+    "source": "llm"
+  },
+  "__llm_button_reasoning": {
+    "primary": {
+      "index": 0,
+      "text": "Login",
+      "reasoning": "Button #0 with text 'Login' uses a vibrant blue color (#337AB7) and is styled as a primary button with the class 'btn-primary'. This indicates it is the main call-to-action for users to log in."
+    },
+    "secondary": {
+      "index": 1,
+      "text": "Choose Language \n                \n                \n                                            العرب",
+      "reasoning": "Button #1 with text 'Choose Language' uses a different blue color (#1A4D80) and is styled as a secondary option with less prominence, making it suitable as a secondary button."
+    },
+    "confidence": 0.95
+  },
+  "personality": {
+    "tone": "professional",
+    "energy": "low",
+    "targetAudience": "IT professionals and administrators"
+  },
+  "designSystem": {
+    "framework": "bootstrap",
+    "componentLibrary": ""
+  },
+  "confidence": {
+    "buttons": 0.95,
+    "colors": 0.9,
+    "overall": 0.925
+  },
+  "__llm_metadata": {
+    "logoSelection": {
+      "llmCalled": true,
+      "llmSucceeded": true,
+      "finalSource": "llm",
+      "rawLogoSelection": {
+        "selectedLogoIndex": 0,
+        "selectedLogoReasoning": "Selected #0 because it is visible, has a medium size, and the alt text matches the brand name 'WHMCS'. It is the most prominent logo available.",
+        "confidence": 0.85
+      }
+    },
+    "buttonClassification": {
+      "llmCalled": true,
+      "llmSucceeded": true
+    }
+  }
+}
