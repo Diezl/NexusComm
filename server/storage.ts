@@ -1,10 +1,10 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
-import { eq, and, or, desc, sql, ne, inArray } from "drizzle-orm";
+import { eq, and, or, desc, sql, ne, inArray, sum } from "drizzle-orm";
 import {
-  users, channels, channelMembers, messages, calls,
+  users, channels, channelMembers, messages, calls, activityLogs,
   type User, type InsertUser, type Channel, type InsertChannel,
-  type Message, type InsertMessage, type Call,
+  type Message, type InsertMessage, type Call, type ActivityLog, type ActivitySummary,
   type MessageWithUser, type ChannelWithMeta, type UserPublic
 } from "@shared/schema";
 import { randomUUID } from "crypto";
@@ -56,6 +56,10 @@ export interface IStorage {
   createCall(call: Partial<Call>): Promise<Call>;
   updateCallStatus(id: string, status: string, startedAt?: Date, endedAt?: Date): Promise<void>;
   getCallById(id: string): Promise<Call | undefined>;
+
+  logActivity(userId: string, action: string, section: string | null, durationSeconds: number): Promise<void>;
+  getActivitySummary(): Promise<ActivitySummary[]>;
+  getUserActivityLogs(userId: string, limit?: number): Promise<ActivityLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -276,6 +280,66 @@ export class DatabaseStorage implements IStorage {
   async getCallById(id: string): Promise<Call | undefined> {
     const [call] = await db.select().from(calls).where(eq(calls.id, id));
     return call;
+  }
+
+  async logActivity(userId: string, action: string, section: string | null, durationSeconds: number): Promise<void> {
+    await db.insert(activityLogs).values({
+      id: randomUUID(),
+      userId,
+      action,
+      section,
+      durationSeconds,
+    });
+  }
+
+  async getActivitySummary(): Promise<ActivitySummary[]> {
+    const allUsers = await db.select({
+      id: users.id,
+      displayName: users.displayName,
+      username: users.username,
+      department: users.department,
+      status: users.status,
+    }).from(users).orderBy(users.displayName);
+
+    const summaries: ActivitySummary[] = [];
+    for (const u of allUsers) {
+      const logs = await db.select().from(activityLogs).where(eq(activityLogs.userId, u.id));
+
+      const logins = logs.filter(l => l.action === "login");
+      const heartbeats = logs.filter(l => l.action === "heartbeat");
+
+      const totalOnline = heartbeats.reduce((s, l) => s + (l.durationSeconds || 0), 0);
+      const chatSec = heartbeats.filter(l => l.section === "chat").reduce((s, l) => s + (l.durationSeconds || 0), 0);
+      const dmSec = heartbeats.filter(l => l.section === "dm").reduce((s, l) => s + (l.durationSeconds || 0), 0);
+      const videoSec = heartbeats.filter(l => l.section === "video_call").reduce((s, l) => s + (l.durationSeconds || 0), 0);
+      const audioSec = heartbeats.filter(l => l.section === "audio_call").reduce((s, l) => s + (l.durationSeconds || 0), 0);
+      const adminSec = heartbeats.filter(l => l.section === "admin").reduce((s, l) => s + (l.durationSeconds || 0), 0);
+
+      summaries.push({
+        userId: u.id,
+        displayName: u.displayName,
+        username: u.username,
+        department: u.department,
+        status: u.status,
+        currentSection: null,
+        lastLogin: logins.length > 0 ? logins[logins.length - 1].createdAt : null,
+        loginCount: logins.length,
+        totalOnlineSeconds: totalOnline,
+        chatSeconds: chatSec,
+        dmSeconds: dmSec,
+        videoCallSeconds: videoSec,
+        audioCallSeconds: audioSec,
+        adminSeconds: adminSec,
+      });
+    }
+    return summaries;
+  }
+
+  async getUserActivityLogs(userId: string, limit = 100): Promise<ActivityLog[]> {
+    return await db.select().from(activityLogs)
+      .where(eq(activityLogs.userId, userId))
+      .orderBy(desc(activityLogs.createdAt))
+      .limit(limit);
   }
 }
 

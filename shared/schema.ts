@@ -57,6 +57,15 @@ export const calls = pgTable("calls", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const activityLogs = pgTable("activity_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  section: text("section"),
+  durationSeconds: integer("duration_seconds").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -89,6 +98,25 @@ export type Message = typeof messages.$inferSelect;
 export type Call = typeof calls.$inferSelect;
 export type InsertChannel = z.infer<typeof insertChannelSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
+
+export type ActivityLog = typeof activityLogs.$inferSelect;
+
+export type ActivitySummary = {
+  userId: string;
+  displayName: string;
+  username: string;
+  department: string | null;
+  status: string;
+  currentSection: string | null;
+  lastLogin: Date | null;
+  loginCount: number;
+  totalOnlineSeconds: number;
+  chatSeconds: number;
+  dmSeconds: number;
+  videoCallSeconds: number;
+  audioCallSeconds: number;
+  adminSeconds: number;
+};
 
 export type MessageWithUser = Message & {
   user: Pick<User, "id" | "displayName" | "avatar" | "username">;

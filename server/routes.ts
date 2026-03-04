@@ -30,6 +30,7 @@ type WSClient = {
 };
 
 const clients = new Map<string, WSClient>();
+const activeSections = new Map<string, string>();
 
 function broadcast(data: object, excludeUserId?: string) {
   const msg = JSON.stringify(data);
@@ -117,6 +118,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }
         }
 
+        if (msg.type === "heartbeat") {
+          const section = msg.section || null;
+          const duration = Math.min(Math.max(0, msg.duration || 30), 300);
+          if (section) activeSections.set(userId, section);
+          await storage.logActivity(userId, "heartbeat", section, duration);
+        }
+
         if (msg.type === "call_offer" || msg.type === "call_answer" || msg.type === "ice_candidate" || msg.type === "call_end" || msg.type === "call_reject" || msg.type === "call_initiate" || msg.type === "screen_share_start" || msg.type === "screen_share_end") {
           if (msg.targetUserId) {
             sendTo(msg.targetUserId, { ...msg, fromUserId: userId });
@@ -130,6 +138,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     ws.on("close", async () => {
       if (userId) {
         clients.delete(userId);
+        activeSections.delete(userId);
         await storage.updateUserStatus(userId, "offline");
         broadcast({ type: "user_status", userId, status: "offline" });
       }
@@ -247,6 +256,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
     req.session.userId = user.id;
     req.session.username = user.username;
+    storage.logActivity(user.id, "login", null, 0).catch(() => {});
     const { password: _, ...safeUser } = user;
     res.json(safeUser);
   });
@@ -538,6 +548,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     if (!channel) return res.status(404).json({ message: "Channel not found" });
     await storage.deleteChannel(req.params.id);
     res.json({ ok: true });
+  });
+
+  app.post("/api/activity/heartbeat", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const { section, duration } = req.body;
+    const dur = Math.min(Math.max(0, duration || 30), 300);
+    if (section) activeSections.set(userId, section);
+    await storage.logActivity(userId, "heartbeat", section || null, dur);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/activity", requireAdmin, async (_req, res) => {
+    const summary = await storage.getActivitySummary();
+    summary.forEach(s => {
+      s.currentSection = activeSections.get(s.userId) || null;
+    });
+    res.json(summary);
+  });
+
+  app.get("/api/admin/activity/:userId", requireAdmin, async (req, res) => {
+    const logs = await storage.getUserActivityLogs(req.params.userId, 200);
+    res.json(logs);
   });
 
   return httpServer;

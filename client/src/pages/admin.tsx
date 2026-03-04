@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -24,8 +25,57 @@ import {
 import {
   Shield, Users, Hash, MessageSquare, Wifi, ArrowLeft,
   Pencil, Trash2, Plus, Key, UserPlus, RefreshCw,
+  Activity, Clock, Video, Mic, LogIn, ChevronDown, ChevronRight,
+  Monitor,
 } from "lucide-react";
-import type { UserPublic, ChannelWithMeta } from "@shared/schema";
+import type { UserPublic, ChannelWithMeta, ActivitySummary, ActivityLog } from "@shared/schema";
+
+function fmtDuration(seconds: number): string {
+  if (seconds <= 0) return "—";
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function fmtDate(d: Date | string | null): string {
+  if (!d) return "—";
+  const date = new Date(d);
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
+const SECTION_LABELS: Record<string, string> = {
+  chat: "Chat",
+  dm: "DM",
+  video_call: "Video Call",
+  audio_call: "Audio Call",
+  media: "Media",
+  ssh: "SSH",
+  directory: "Directory",
+  admin: "Admin",
+};
+
+const SECTION_COLORS: Record<string, string> = {
+  chat: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
+  dm: "bg-purple-500/15 text-purple-600 dark:text-purple-400",
+  video_call: "bg-green-500/15 text-green-600 dark:text-green-400",
+  audio_call: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+  media: "bg-orange-500/15 text-orange-600 dark:text-orange-400",
+  ssh: "bg-gray-500/15 text-gray-600 dark:text-gray-400",
+  directory: "bg-yellow-500/15 text-yellow-600 dark:text-yellow-400",
+  admin: "bg-red-500/15 text-red-600 dark:text-red-400",
+};
 
 function getInitials(name: string) {
   return name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
@@ -57,6 +107,21 @@ export default function AdminPage() {
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
   const [createChannelForm, setCreateChannelForm] = useState({ name: "", description: "" });
   const [deleteChannelId, setDeleteChannelId] = useState<string | null>(null);
+  const [expandedUser, setExpandedUser] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const sendHeartbeat = () => {
+      fetch("/api/activity/heartbeat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ section: "admin", duration: 30 }),
+        credentials: "include",
+      }).catch(() => {});
+    };
+    const interval = setInterval(sendHeartbeat, 30000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const { data: stats, isLoading: statsLoading } = useQuery<{ totalUsers: number; totalChannels: number; onlineUsers: number; totalMessages: number }>({
     queryKey: ["/api/admin/stats"],
@@ -68,6 +133,16 @@ export default function AdminPage() {
 
   const { data: adminChannels = [], isLoading: channelsLoading } = useQuery<ChannelWithMeta[]>({
     queryKey: ["/api/admin/channels"],
+  });
+
+  const { data: activityData = [], isLoading: activityLoading, refetch: refetchActivity } = useQuery<ActivitySummary[]>({
+    queryKey: ["/api/admin/activity"],
+    refetchInterval: 60000,
+  });
+
+  const { data: userLogs = [] } = useQuery<ActivityLog[]>({
+    queryKey: ["/api/admin/activity", expandedUser],
+    enabled: !!expandedUser,
   });
 
   const updateUserMutation = useMutation({
@@ -200,6 +275,10 @@ export default function AdminPage() {
           <TabsList>
             <TabsTrigger value="users" data-testid="tab-users">Users ({adminUsers.length})</TabsTrigger>
             <TabsTrigger value="channels" data-testid="tab-channels">Channels ({adminChannels.length})</TabsTrigger>
+            <TabsTrigger value="activity" data-testid="tab-activity" className="gap-1.5">
+              <Activity className="w-3.5 h-3.5" />
+              Activity
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="users" className="space-y-4">
@@ -360,6 +439,192 @@ export default function AdminPage() {
                 </table>
               </div>
             )}
+          </TabsContent>
+
+          <TabsContent value="activity" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                Login history and time spent per section, updated every 30 seconds via heartbeat.
+              </p>
+              <Button size="sm" variant="outline" className="gap-2" onClick={() => refetchActivity()} data-testid="button-refresh-activity">
+                <RefreshCw className="w-3.5 h-3.5" />
+                Refresh
+              </Button>
+            </div>
+
+            {activityLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <div className="rounded-lg border border-border overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 border-b border-border">
+                      <tr>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Employee</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Currently In</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Last Login</th>
+                        <th className="text-center px-3 py-3 font-medium text-muted-foreground" title="Total logins">
+                          <LogIn className="w-3.5 h-3.5 mx-auto" />
+                        </th>
+                        <th className="text-right px-3 py-3 font-medium text-muted-foreground" title="Total online time">
+                          <Clock className="w-3.5 h-3.5 ml-auto" />
+                        </th>
+                        <th className="text-right px-3 py-3 font-medium text-muted-foreground" title="Chat time">
+                          <MessageSquare className="w-3.5 h-3.5 ml-auto" />
+                        </th>
+                        <th className="text-right px-3 py-3 font-medium text-muted-foreground" title="DM time">
+                          <Users className="w-3.5 h-3.5 ml-auto" />
+                        </th>
+                        <th className="text-right px-3 py-3 font-medium text-muted-foreground" title="Video call time">
+                          <Video className="w-3.5 h-3.5 ml-auto" />
+                        </th>
+                        <th className="text-right px-3 py-3 font-medium text-muted-foreground" title="Audio call time">
+                          <Mic className="w-3.5 h-3.5 ml-auto" />
+                        </th>
+                        <th className="w-8" />
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {activityData.map(u => {
+                        const isExpanded = expandedUser === u.userId;
+                        return (
+                          <>
+                            <tr
+                              key={u.userId}
+                              className="hover:bg-muted/30 transition-colors cursor-pointer"
+                              onClick={() => setExpandedUser(isExpanded ? null : u.userId)}
+                              data-testid={`activity-row-${u.userId}`}
+                            >
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="relative">
+                                    <Avatar className="w-7 h-7">
+                                      <AvatarFallback className="text-xs bg-primary/10 text-primary font-semibold">
+                                        {getInitials(u.displayName)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <span className={`absolute bottom-0 right-0 w-2 h-2 rounded-full border border-background ${STATUS_COLORS[u.status] || STATUS_COLORS.offline}`} />
+                                  </div>
+                                  <div>
+                                    <p className="font-medium text-sm">{u.displayName}</p>
+                                    <p className="text-xs text-muted-foreground">@{u.username}</p>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                {u.currentSection ? (
+                                  <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${SECTION_COLORS[u.currentSection] || "bg-muted text-muted-foreground"}`}>
+                                    <Monitor className="w-3 h-3" />
+                                    {SECTION_LABELS[u.currentSection] || u.currentSection}
+                                  </span>
+                                ) : (
+                                  <span className="text-xs text-muted-foreground/50 italic">Offline</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3 text-sm text-muted-foreground">{fmtDate(u.lastLogin)}</td>
+                              <td className="px-3 py-3 text-center text-sm font-mono">{u.loginCount || "—"}</td>
+                              <td className="px-3 py-3 text-right text-sm font-mono text-foreground">{fmtDuration(u.totalOnlineSeconds)}</td>
+                              <td className="px-3 py-3 text-right text-sm font-mono text-blue-600 dark:text-blue-400">{fmtDuration(u.chatSeconds)}</td>
+                              <td className="px-3 py-3 text-right text-sm font-mono text-purple-600 dark:text-purple-400">{fmtDuration(u.dmSeconds)}</td>
+                              <td className="px-3 py-3 text-right text-sm font-mono text-green-600 dark:text-green-400">{fmtDuration(u.videoCallSeconds)}</td>
+                              <td className="px-3 py-3 text-right text-sm font-mono text-emerald-600 dark:text-emerald-400">{fmtDuration(u.audioCallSeconds)}</td>
+                              <td className="px-2 py-3">
+                                {isExpanded
+                                  ? <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                  : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr key={`${u.userId}-expanded`}>
+                                <td colSpan={10} className="bg-muted/20 border-t border-border px-4 pb-3 pt-2">
+                                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">
+                                    Recent Activity — {u.displayName}
+                                  </p>
+                                  {userLogs.length === 0 ? (
+                                    <p className="text-xs text-muted-foreground italic">No activity recorded yet.</p>
+                                  ) : (
+                                    <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+                                      {userLogs.map(log => (
+                                        <div key={log.id} className="flex items-center gap-3 text-xs py-1 border-b border-border/40 last:border-0">
+                                          <span className="text-muted-foreground/60 font-mono w-28 shrink-0">
+                                            {new Date(log.createdAt!).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                          </span>
+                                          <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide shrink-0 ${
+                                            log.action === "login"
+                                              ? "bg-green-500/15 text-green-600 dark:text-green-400"
+                                              : log.section ? (SECTION_COLORS[log.section] || "bg-muted text-muted-foreground") : "bg-muted text-muted-foreground"
+                                          }`}>
+                                            {log.action === "login" ? "Login" : SECTION_LABELS[log.section || ""] || log.section || "—"}
+                                          </span>
+                                          {log.action === "heartbeat" && log.durationSeconds && log.durationSeconds > 0 && (
+                                            <span className="text-muted-foreground">
+                                              {fmtDuration(log.durationSeconds)}
+                                            </span>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            )}
+                          </>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
+              <Card>
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <MessageSquare className="w-3.5 h-3.5 text-blue-500" /> Chat Time
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <p className="text-2xl font-bold font-mono">{fmtDuration(activityData.reduce((s, u) => s + u.chatSeconds, 0))}</p>
+                  <p className="text-xs text-muted-foreground">across all employees</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-purple-500" /> DM Time
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <p className="text-2xl font-bold font-mono">{fmtDuration(activityData.reduce((s, u) => s + u.dmSeconds, 0))}</p>
+                  <p className="text-xs text-muted-foreground">across all employees</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5 text-green-500" /> Video Calls
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <p className="text-2xl font-bold font-mono">{fmtDuration(activityData.reduce((s, u) => s + u.videoCallSeconds, 0))}</p>
+                  <p className="text-xs text-muted-foreground">across all employees</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2 pt-4 px-4">
+                  <CardTitle className="text-xs font-medium text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+                    <Mic className="w-3.5 h-3.5 text-emerald-500" /> Audio Calls
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-4">
+                  <p className="text-2xl font-bold font-mono">{fmtDuration(activityData.reduce((s, u) => s + u.audioCallSeconds, 0))}</p>
+                  <p className="text-xs text-muted-foreground">across all employees</p>
+                </CardContent>
+              </Card>
+            </div>
           </TabsContent>
         </Tabs>
       </div>

@@ -9,6 +9,7 @@ import { SSHTerminal } from "@/components/ssh-terminal";
 import { MediaPlayer } from "@/components/media-player";
 import { TelegramMonitor } from "@/components/telegram-monitor";
 import { useWebSocket } from "@/hooks/use-websocket";
+import { useActivityTracker } from "@/hooks/use-activity-tracker";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -189,6 +190,17 @@ export default function ChatPage() {
       setIncomingTgChats(chats);
     },
   });
+
+  const activitySection = callState?.status === "connected"
+    ? (callState.type === "video" ? "video_call" : "audio_call")
+    : activeView?.type === "channel" ? "chat"
+    : activeView?.type === "dm" ? "dm"
+    : activeView?.type === "media" ? "media"
+    : activeView?.type === "ssh" ? "ssh"
+    : activeView?.type === "directory" ? "directory"
+    : "chat";
+
+  useActivityTracker(activitySection, send, !!user);
 
   const selectChannel = useCallback(async (channel: ChannelWithMeta) => {
     const view: ActiveView = { type: "channel", id: channel.id };
