@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useEffect } from "react";
 import LoginPage from "@/pages/login";
 import ChatPage from "@/pages/chat";
+import AdminPage from "@/pages/admin";
 import { InstallPrompt } from "@/components/install-prompt";
 
 function AppRouter() {
@@ -36,6 +37,7 @@ function AppRouter() {
   return (
     <Switch>
       <Route path="/" component={ChatPage} />
+      <Route path="/admin" component={AdminPage} />
       <Route path="/login" component={LoginPage} />
       <Route component={ChatPage} />
     </Switch>

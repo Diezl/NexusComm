@@ -21,6 +21,13 @@ export function verifyPassword(password: string, hash: string): boolean {
   return hashPassword(password) === hash;
 }
 
+export interface AdminStats {
+  totalUsers: number;
+  totalChannels: number;
+  onlineUsers: number;
+  totalMessages: number;
+}
+
 export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   getUserById(id: string): Promise<User | undefined>;
@@ -28,10 +35,14 @@ export interface IStorage {
   getAllUsers(): Promise<UserPublic[]>;
   updateUserStatus(id: string, status: string): Promise<void>;
   updateUser(id: string, data: Partial<Pick<User, "displayName" | "avatar" | "department" | "role">>): Promise<User>;
+  deleteUser(id: string): Promise<void>;
+  resetUserPassword(id: string, newPassword: string): Promise<void>;
+  getAdminStats(): Promise<AdminStats>;
 
   createChannel(channel: InsertChannel): Promise<Channel>;
   getChannelById(id: string): Promise<Channel | undefined>;
   getAllChannels(): Promise<ChannelWithMeta[]>;
+  deleteChannel(id: string): Promise<void>;
   getUserChannels(userId: string): Promise<ChannelWithMeta[]>;
   addChannelMember(channelId: string, userId: string): Promise<void>;
   removeChannelMember(channelId: string, userId: string): Promise<void>;
@@ -92,6 +103,30 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async deleteUser(id: string): Promise<void> {
+    await db.delete(channelMembers).where(eq(channelMembers.userId, id));
+    await db.delete(messages).where(eq(messages.fromUserId, id));
+    await db.delete(users).where(eq(users.id, id));
+  }
+
+  async resetUserPassword(id: string, newPassword: string): Promise<void> {
+    const hashed = hashPassword(newPassword);
+    await db.update(users).set({ password: hashed }).where(eq(users.id, id));
+  }
+
+  async getAdminStats(): Promise<AdminStats> {
+    const [{ total: totalUsers }] = await db.select({ total: sql<number>`count(*)` }).from(users);
+    const [{ total: totalChannels }] = await db.select({ total: sql<number>`count(*)` }).from(channels);
+    const [{ total: onlineUsers }] = await db.select({ total: sql<number>`count(*)` }).from(users).where(eq(users.status, "online"));
+    const [{ total: totalMessages }] = await db.select({ total: sql<number>`count(*)` }).from(messages);
+    return {
+      totalUsers: Number(totalUsers),
+      totalChannels: Number(totalChannels),
+      onlineUsers: Number(onlineUsers),
+      totalMessages: Number(totalMessages),
+    };
+  }
+
   async createChannel(channel: InsertChannel): Promise<Channel> {
     const [created] = await db.insert(channels).values({
       ...channel,
@@ -103,6 +138,12 @@ export class DatabaseStorage implements IStorage {
   async getChannelById(id: string): Promise<Channel | undefined> {
     const [channel] = await db.select().from(channels).where(eq(channels.id, id));
     return channel;
+  }
+
+  async deleteChannel(id: string): Promise<void> {
+    await db.delete(channelMembers).where(eq(channelMembers.channelId, id));
+    await db.delete(messages).where(eq(messages.channelId, id));
+    await db.delete(channels).where(eq(channels.id, id));
   }
 
   async getAllChannels(): Promise<ChannelWithMeta[]> {

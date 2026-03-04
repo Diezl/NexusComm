@@ -458,5 +458,87 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json({ ok: true });
   });
 
+  async function requireAdmin(req: Request, res: Response, next: Function) {
+    if (!req.session?.userId) return res.status(401).json({ message: "Unauthorized" });
+    const user = await storage.getUserById(req.session.userId);
+    if (!user || user.role !== "admin") return res.status(403).json({ message: "Forbidden: admin only" });
+    next();
+  }
+
+  app.get("/api/admin/stats", requireAdmin, async (_req, res) => {
+    const stats = await storage.getAdminStats();
+    res.json(stats);
+  });
+
+  app.get("/api/admin/users", requireAdmin, async (_req, res) => {
+    const allUsers = await storage.getAllUsers();
+    res.json(allUsers);
+  });
+
+  app.post("/api/admin/users", requireAdmin, async (req, res) => {
+    const { username, password, displayName, role, department } = req.body;
+    if (!username || !password || !displayName) {
+      return res.status(400).json({ message: "username, password, and displayName are required" });
+    }
+    const existing = await storage.getUserByUsername(username);
+    if (existing) return res.status(409).json({ message: "Username already taken" });
+    const user = await storage.createUser({ username, password, displayName, role: role || "employee", department: department || null, avatar: null });
+    const allChannels = await storage.getAllChannels();
+    for (const ch of allChannels) {
+      await storage.addChannelMember(ch.id, user.id);
+    }
+    const { password: _, ...safeUser } = user;
+    res.status(201).json(safeUser);
+  });
+
+  app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    const { displayName, role, department, password } = req.body;
+    const user = await storage.getUserById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (password) {
+      await storage.resetUserPassword(req.params.id, password);
+    }
+    const updated = await storage.updateUser(req.params.id, {
+      ...(displayName !== undefined && { displayName }),
+      ...(role !== undefined && { role }),
+      ...(department !== undefined && { department }),
+    });
+    const { password: _, ...safeUser } = updated;
+    res.json(safeUser);
+  });
+
+  app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
+    if (req.params.id === req.session.userId) {
+      return res.status(400).json({ message: "Cannot delete your own account" });
+    }
+    const user = await storage.getUserById(req.params.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    await storage.deleteUser(req.params.id);
+    res.json({ ok: true });
+  });
+
+  app.get("/api/admin/channels", requireAdmin, async (_req, res) => {
+    const allChannels = await storage.getAllChannels();
+    res.json(allChannels);
+  });
+
+  app.post("/api/admin/channels", requireAdmin, async (req, res) => {
+    const { name, description, isPrivate } = req.body;
+    if (!name) return res.status(400).json({ message: "name is required" });
+    const channel = await storage.createChannel({ name: name.toLowerCase().replace(/\s+/g, "-"), description: description || null, isPrivate: !!isPrivate, createdBy: req.session.userId! });
+    const allUsers = await storage.getAllUsers();
+    for (const u of allUsers) {
+      await storage.addChannelMember(channel.id, u.id);
+    }
+    res.status(201).json(channel);
+  });
+
+  app.delete("/api/admin/channels/:id", requireAdmin, async (req, res) => {
+    const channel = await storage.getChannelById(req.params.id);
+    if (!channel) return res.status(404).json({ message: "Channel not found" });
+    await storage.deleteChannel(req.params.id);
+    res.json({ ok: true });
+  });
+
   return httpServer;
 }

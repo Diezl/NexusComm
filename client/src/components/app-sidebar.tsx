@@ -34,7 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Hash, Users, Plus, ChevronDown, Shield,
-  Circle, LogOut, Settings, User, Terminal, ExternalLink, Globe, Tv, Monitor
+  Circle, LogOut, Settings, User, Terminal, ExternalLink, Globe, Tv, Monitor, LayoutDashboard
 } from "lucide-react";
 import { SiTelegram } from "react-icons/si";
 import type { ChannelWithMeta, UserPublic } from "@shared/schema";
@@ -235,6 +235,20 @@ export function AppSidebar({
                     )}
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+                {currentUser.role === "admin" && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      asChild
+                      data-testid="button-admin-panel"
+                    >
+                      <a href="/admin" className="flex items-center gap-2 w-full">
+                        <LayoutDashboard className="w-4 h-4 shrink-0 text-primary" />
+                        <span className="flex-1 font-medium text-primary">Admin Panel</span>
+                        <Badge className="text-[10px] h-4 px-1 bg-primary/10 text-primary border-primary/20">Admin</Badge>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

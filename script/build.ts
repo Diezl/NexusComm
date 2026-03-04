@@ -7,7 +7,8 @@ import { rm, readFile } from "fs/promises";
 const allowlist = [
   "@google/generative-ai",
   "axios",
-  "connect-pg-simple",
+  // connect-pg-simple must stay external: it reads table.sql via __dirname at runtime
+  // bundling it breaks the path and prevents the session table from being created
   "cors",
   "date-fns",
   "drizzle-orm",
