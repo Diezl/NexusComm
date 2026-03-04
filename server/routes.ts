@@ -572,5 +572,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(logs);
   });
 
+  app.get("/api/media/playlists", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const playlists = await storage.getMediaPlaylists(userId);
+    res.json(playlists);
+  });
+
+  app.post("/api/media/playlists", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const { name, items } = req.body;
+    if (!name || !Array.isArray(items)) return res.status(400).json({ message: "name and items are required" });
+    const pl = await storage.saveMediaPlaylist(userId, name.trim() || "Unnamed", items);
+    res.status(201).json(pl);
+  });
+
+  app.patch("/api/media/playlists/:id", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ message: "name is required" });
+    await storage.renameMediaPlaylist(req.params.id, userId, name.trim());
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/media/playlists/:id", requireAuth, async (req, res) => {
+    const userId = req.session.userId!;
+    await storage.deleteMediaPlaylist(req.params.id, userId);
+    res.json({ ok: true });
+  });
+
   return httpServer;
 }

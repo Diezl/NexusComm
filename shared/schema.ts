@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, boolean, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, boolean, timestamp, integer, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -57,6 +57,25 @@ export const calls = pgTable("calls", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const mediaPlaylists = pgTable("media_playlists", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  items: json("items").notNull().$type<MediaItemRecord[]>(),
+  itemCount: integer("item_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type MediaItemRecord = {
+  id: string;
+  url: string;
+  name: string;
+  type: "local" | "url";
+  streamType?: string;
+  group?: string;
+  logo?: string;
+};
+
 export const activityLogs = pgTable("activity_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -100,6 +119,7 @@ export type InsertChannel = z.infer<typeof insertChannelSchema>;
 export type InsertMessage = z.infer<typeof insertMessageSchema>;
 
 export type ActivityLog = typeof activityLogs.$inferSelect;
+export type MediaPlaylist = typeof mediaPlaylists.$inferSelect;
 
 export type ActivitySummary = {
   userId: string;

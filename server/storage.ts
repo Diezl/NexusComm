@@ -2,10 +2,11 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import { eq, and, or, desc, sql, ne, inArray, sum } from "drizzle-orm";
 import {
-  users, channels, channelMembers, messages, calls, activityLogs,
+  users, channels, channelMembers, messages, calls, activityLogs, mediaPlaylists,
   type User, type InsertUser, type Channel, type InsertChannel,
   type Message, type InsertMessage, type Call, type ActivityLog, type ActivitySummary,
-  type MessageWithUser, type ChannelWithMeta, type UserPublic
+  type MessageWithUser, type ChannelWithMeta, type UserPublic,
+  type MediaPlaylist, type MediaItemRecord,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import * as crypto from "crypto";
@@ -60,6 +61,11 @@ export interface IStorage {
   logActivity(userId: string, action: string, section: string | null, durationSeconds: number): Promise<void>;
   getActivitySummary(): Promise<ActivitySummary[]>;
   getUserActivityLogs(userId: string, limit?: number): Promise<ActivityLog[]>;
+
+  saveMediaPlaylist(userId: string, name: string, items: MediaItemRecord[]): Promise<MediaPlaylist>;
+  getMediaPlaylists(userId: string): Promise<MediaPlaylist[]>;
+  deleteMediaPlaylist(id: string, userId: string): Promise<void>;
+  renameMediaPlaylist(id: string, userId: string, name: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -340,6 +346,35 @@ export class DatabaseStorage implements IStorage {
       .where(eq(activityLogs.userId, userId))
       .orderBy(desc(activityLogs.createdAt))
       .limit(limit);
+  }
+
+  async saveMediaPlaylist(userId: string, name: string, items: MediaItemRecord[]): Promise<MediaPlaylist> {
+    const [pl] = await db.insert(mediaPlaylists).values({
+      id: randomUUID(),
+      userId,
+      name,
+      items,
+      itemCount: items.length,
+    }).returning();
+    return pl;
+  }
+
+  async getMediaPlaylists(userId: string): Promise<MediaPlaylist[]> {
+    return await db.select().from(mediaPlaylists)
+      .where(eq(mediaPlaylists.userId, userId))
+      .orderBy(desc(mediaPlaylists.createdAt));
+  }
+
+  async deleteMediaPlaylist(id: string, userId: string): Promise<void> {
+    await db.delete(mediaPlaylists).where(
+      and(eq(mediaPlaylists.id, id), eq(mediaPlaylists.userId, userId))
+    );
+  }
+
+  async renameMediaPlaylist(id: string, userId: string, name: string): Promise<void> {
+    await db.update(mediaPlaylists)
+      .set({ name })
+      .where(and(eq(mediaPlaylists.id, id), eq(mediaPlaylists.userId, userId)));
   }
 }
 

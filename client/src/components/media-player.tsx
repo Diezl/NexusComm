@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import Hls from "hls.js";
 import mpegts from "mpegts.js";
 import flvjs from "flv.js";
@@ -24,17 +26,18 @@ type MediaItem = {
   logo?: string;
 };
 
-type SavedPlaylist = {
+type ServerPlaylist = {
   id: string;
+  userId: string;
   name: string;
-  savedAt: number;
   items: MediaItem[];
+  itemCount: number;
+  createdAt: string | null;
 };
 
 const ITEM_HEIGHT = 40;
 const OVERSCAN = 8;
 const LS_AUTOSAVE = "nexuscomm_playlist_auto";
-const LS_NAMED = "nexuscomm_playlists_saved";
 const LS_INDEX = "nexuscomm_playlist_index";
 
 function lsGet<T>(key: string, fallback: T): T {
@@ -265,9 +268,9 @@ export function MediaPlayer() {
   const [activeGroup, setActiveGroup] = useState<string>("__all__");
   const [showGroupMenu, setShowGroupMenu] = useState(false);
 
-  const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>(() =>
-    lsGet<SavedPlaylist[]>(LS_NAMED, [])
-  );
+  const { data: savedPlaylists = [] } = useQuery<ServerPlaylist[]>({
+    queryKey: ["/api/media/playlists"],
+  });
   const [showSavedPanel, setShowSavedPanel] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState("");
   const [showSaveInput, setShowSaveInput] = useState(false);
@@ -552,26 +555,35 @@ export function MediaPlayer() {
     lsSet(LS_AUTOSAVE, []); lsSet(LS_INDEX, -1);
   };
 
+  const saveMutation = useMutation({
+    mutationFn: async ({ name, items }: { name: string; items: MediaItem[] }) =>
+      apiRequest("POST", "/api/media/playlists", { name, items }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/media/playlists"] });
+      setSaveNameInput(""); setShowSaveInput(false);
+      setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 2000);
+    },
+    onError: () => {
+      setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 2000);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/media/playlists/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/media/playlists"] }),
+  });
+
   const saveCurrentPlaylist = () => {
     const name = saveNameInput.trim() || `Playlist ${new Date().toLocaleDateString()}`;
     const urlItems = playlist.filter(i => i.type === "url");
     if (urlItems.length === 0) { setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 2000); return; }
-    const entry: SavedPlaylist = { id: `pl-${Date.now()}`, name, savedAt: Date.now(), items: urlItems };
-    const updated = [entry, ...savedPlaylists];
-    const ok = lsSet(LS_NAMED, updated);
-    if (ok) {
-      setSavedPlaylists(updated);
-      setSaveNameInput(""); setShowSaveInput(false);
-      setSaveStatus("saved"); setTimeout(() => setSaveStatus("idle"), 2000);
-    } else {
-      setSaveStatus("error"); setTimeout(() => setSaveStatus("idle"), 2000);
-    }
+    saveMutation.mutate({ name, items: urlItems });
   };
 
-  const loadSavedPlaylist = (pl: SavedPlaylist) => {
+  const loadSavedPlaylist = (pl: ServerPlaylist) => {
     destroyAll();
     if (videoRef.current) videoRef.current.src = "";
-    setPlaylist(pl.items);
+    setPlaylist(pl.items as MediaItem[]);
     setCurrentIndex(pl.items.length > 0 ? 0 : -1);
     setIsPlaying(false); setIsLive(false);
     setSearchQuery(""); setActiveGroup("__all__");
@@ -581,9 +593,7 @@ export function MediaPlayer() {
   };
 
   const deleteSavedPlaylist = (id: string) => {
-    const updated = savedPlaylists.filter(p => p.id !== id);
-    setSavedPlaylists(updated);
-    lsSet(LS_NAMED, updated);
+    deleteMutation.mutate(id);
   };
 
   const exportM3U = () => {
@@ -819,7 +829,7 @@ export function MediaPlayer() {
                       <div key={pl.id} className="flex items-center gap-2 px-3 py-2 hover:bg-accent/50 group" data-testid={`saved-playlist-${pl.id}`}>
                         <button className="flex-1 min-w-0 text-left" onClick={() => loadSavedPlaylist(pl)}>
                           <p className="text-xs font-medium truncate">{pl.name}</p>
-                          <p className="text-[10px] text-muted-foreground">{pl.items.length.toLocaleString()} channels · {new Date(pl.savedAt).toLocaleDateString()}</p>
+                          <p className="text-[10px] text-muted-foreground">{pl.itemCount.toLocaleString()} channels · {pl.createdAt ? new Date(pl.createdAt).toLocaleDateString() : ""}</p>
                         </button>
                         <button className="opacity-0 group-hover:opacity-100 shrink-0" onClick={() => deleteSavedPlaylist(pl.id)} title="Delete saved playlist" data-testid={`media-delete-saved-${pl.id}`}>
                           <Trash2 className="w-3 h-3 text-muted-foreground hover:text-destructive" />
